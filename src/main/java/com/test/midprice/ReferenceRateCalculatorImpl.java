@@ -4,16 +4,33 @@ import static com.test.midprice.MarketFactory.*;
 
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.TreeMap;
 
+/**
+ * NotThreadSafe
+ **/
 public class ReferenceRateCalculatorImpl implements ReferenceRateCalculator {
 	
-	private final HashMap<Long, Double> marketMap =  new HashMap<Long, Double>();
+	/**
+	 * Market is Source and Provider packed into a long.   
+	 * marketMap 	is Market --> MidPrice  
+	 * midPricesMap is MidPrice(Long) --> FXPrice in increasing order of MidPrice. (TreeMap)
+	 */
+	private final Map<Long, Double> marketMap =  new HashMap<Long, Double>();
 	private final TreeMap<Long, FXPrice> midPricesMap =new TreeMap<Long, FXPrice>();
+	//Configured Markets (PriceSource+PriceProvider) as array of longs. 
 	private Long[] markets;
-	private static final FXPrice stalePrice = new FXPriceImpl(Double.NaN, Double.NaN, true, null, null);	
+	// Singleton stale price object
+	private static final FXPrice stalePrice = new FXPriceImpl(Double.NaN, Double.NaN, true, null, null);
 	
+	/**
+	 * From the configuration object the PriceSource+PriceProvider
+	 * which define a market are packed into a long and stored. 
+	 * This happens only few times a day as stated.
+	 */
 	@Override
 	public void onConfiguration(Configuration config) {
 		markets = new Long[config.getSize()];
@@ -22,15 +39,43 @@ public class ReferenceRateCalculatorImpl implements ReferenceRateCalculator {
 			PriceProvider provider = config.getProvider(i);
 			markets[i] = getMarketKey(source, provider);
 		}
-		Arrays.sort(markets);
+		Arrays.sort(markets);// for binary search in checkIfMarketConfigured
+		removePricesForNonConfiguredMarkets();
 	}
 
-	int getSizeOfMarkets() {
+	public int getSizeOfMarkets() {
 		return markets.length;
 	}
+	
+	public int getSizeOfMarkets2() {
+		return marketMap.size();
+	}
+	
+	public int getSizeOfMarkets3() {
+		return midPricesMap.size();
+	}
+	
+	private void removePricesForNonConfiguredMarkets() {
+		Iterator<Entry<Long, Double>> itr =  marketMap.entrySet().iterator();
+		while(itr.hasNext()) {
+			Entry<Long, Double> entry = itr.next();			
+			int found = Arrays.binarySearch(markets, entry.getKey());
+			if(found < 0) {// if not found remove it.
+				Double midPriceForMkt = entry.getValue();
+				itr.remove();
+				if(midPriceForMkt != null) {
+					midPricesMap.remove(Double.doubleToLongBits(midPriceForMkt));
+				}
+			}
+		}		
+	}
+	
 	@Override
 	public void onFxPrice(FXPrice fxPrice) {
-		if(checkMarket(fxPrice)) {
+		if(!validPrice(fxPrice)){
+			return;
+		}
+		if(checkIfMarketConfigured(fxPrice)) {// if FXPrice is not in list of configured mkts then it is dropped.
 			long mktKey = getMarketKey(fxPrice.getSource(), fxPrice.getProvider());
 			if(!fxPrice.isStale()) {
 				double midPrice = calculateMidPrice(fxPrice);
@@ -51,6 +96,29 @@ public class ReferenceRateCalculatorImpl implements ReferenceRateCalculator {
 //		}
 	}
 	
+	private boolean validPrice(FXPrice fxPrice) {
+		if(Double.isNaN(fxPrice.getBid())
+			|| Double.isInfinite(fxPrice.getBid())	
+			|| Double.isNaN(fxPrice.getOffer())
+			|| Double.isInfinite(fxPrice.getOffer())){
+			return false;
+		}
+		return true;
+	}
+	
+	/**
+	 * Checks if FXPrice is within list of configured markets.
+	 * @param fxPrice
+	 * @return
+	 */
+	private boolean checkIfMarketConfigured(FXPrice fxPrice) {
+		PriceSource source = fxPrice.getSource();
+		PriceProvider provider = fxPrice.getProvider();
+		int found = Arrays.binarySearch(markets, getMarketKey(source, provider));
+		return (found >= 0 );		
+	}
+	
+	// Mid Price is average of bid and offer.
 	private double calculateMidPrice(FXPrice fxPrice) {
 		return getAverage(fxPrice.getBid(),fxPrice.getOffer());
 	}
@@ -60,8 +128,11 @@ public class ReferenceRateCalculatorImpl implements ReferenceRateCalculator {
 	}
 
 	@Override
-	// If even number of mid prices then median is average of 2 middle values. This wont have the Source and Provider set on it. 
-	// If odd, then we can get an exact median rate which will have the source and provider set on it.
+	/** 
+	 * Calculate just needs to get the median value from sorted midPricesMap.
+	 *  If even number of mid prices then median is average of 2 middle values. This wont have the Source and Provider set on it. 
+	 *	If odd, then we can get an exact median rate which will have the source and provider set on it.
+	 */
 	public FXPrice calculate() {
 		if(midPricesMap.isEmpty()) {
 			return stalePrice;
@@ -98,26 +169,32 @@ public class ReferenceRateCalculatorImpl implements ReferenceRateCalculator {
 		return null;
 	}
 	
+	/**
+	 * Creates and returns a Reference Rate from the chosen median FXPrice.
+	 * @param fxPrice
+	 * @return FXPrice
+	 */
 	private FXPrice getReferenceRate(FXPrice fxPrice) {
 		double refRate = calculateMidPrice(fxPrice);
 		return new FXPriceImpl(refRate, refRate, fxPrice.isStale(), fxPrice.getSource(), fxPrice.getProvider());
 		
 	}
 	
+	/**
+	 * Creates mid prices from 2 FXPrices and then calculates average of them 
+	 * as the retured reference rate. 
+	 * source and provider are set as null as the 2 rates could be from different mkts.
+	 *  
+	 * @param firstFXPrice
+	 * @param secondFXPrice
+	 * @return FXPrice
+	 */
 	private FXPrice getReferenceRateFrom2FXPrices(FXPrice firstFXPrice, FXPrice secondFXPrice) {
 		double first = calculateMidPrice(firstFXPrice);
 		double second = calculateMidPrice(secondFXPrice);
 		double referenceMedianRate = getAverage(first, second);
 		return new FXPriceImpl(referenceMedianRate, referenceMedianRate, false, null, null);
 	}
-	
-	private boolean checkMarket(FXPrice fxPrice) {
-		PriceSource source = fxPrice.getSource();
-		PriceProvider provider = fxPrice.getProvider();
-		int found = Arrays.binarySearch(markets, getMarketKey(source, provider));
-		return (found >= 0 );		
-	}
-	
 	
 	
 	/*
