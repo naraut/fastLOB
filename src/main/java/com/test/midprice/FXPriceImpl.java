@@ -53,6 +53,12 @@ public class FXPriceImpl implements FXPrice {
 	public int hashCode() {
 		final int prime = 31;
 		int result = 1;
+		long temp;
+		temp = Double.doubleToLongBits(bid);
+		result = prime * result + (int) (temp ^ (temp >>> 32));
+		result = prime * result + (isStale ? 1231 : 1237);
+		temp = Double.doubleToLongBits(offer);
+		result = prime * result + (int) (temp ^ (temp >>> 32));
 		result = prime * result + ((provider == null) ? 0 : provider.hashCode());
 		result = prime * result + ((source == null) ? 0 : source.hashCode());
 		return result;
@@ -67,6 +73,12 @@ public class FXPriceImpl implements FXPrice {
 		if (getClass() != obj.getClass())
 			return false;
 		FXPriceImpl other = (FXPriceImpl) obj;
+		if (Double.doubleToLongBits(bid) != Double.doubleToLongBits(other.bid))
+			return false;
+		if (isStale != other.isStale)
+			return false;
+		if (Double.doubleToLongBits(offer) != Double.doubleToLongBits(other.offer))
+			return false;
 		if (provider != other.provider)
 			return false;
 		if (source != other.source)
