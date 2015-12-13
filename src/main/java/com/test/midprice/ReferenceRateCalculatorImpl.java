@@ -47,14 +47,6 @@ public class ReferenceRateCalculatorImpl implements ReferenceRateCalculator {
 		return markets.length;
 	}
 	
-	public int getSizeOfMarkets2() {
-		return marketMap.size();
-	}
-	
-	public int getSizeOfMarkets3() {
-		return midPricesMap.size();
-	}
-	
 	private void removePricesForNonConfiguredMarkets() {
 		Iterator<Entry<Long, Double>> itr =  marketMap.entrySet().iterator();
 		while(itr.hasNext()) {
