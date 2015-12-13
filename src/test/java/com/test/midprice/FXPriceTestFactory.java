@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * This class acts as a Test FXPrice input and corresponding output reference rate Generator.
+ * This class acts as a Test FXPrice input and corresponding output reference rate Generator. 
  *
  */
 public class FXPriceTestFactory {

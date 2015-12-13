@@ -10,7 +10,7 @@ import java.util.Map.Entry;
 import java.util.TreeMap;
 
 /**
- * NotThreadSafe
+ * NotThreadSafe 
  **/
 public class ReferenceRateCalculatorImpl implements ReferenceRateCalculator {
 	
